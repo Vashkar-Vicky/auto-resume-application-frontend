@@ -1,10 +1,19 @@
 "use client";
 
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSessionWS } from "@/hooks/useSessionWS";
 import { useSessionStore } from "@/store/sessionStore";
 import { apiFetch } from "@/lib/api";
+
+type SessionDetail = {
+  id: string;
+  status: string;
+  progress: { applied?: number; skipped?: number; failed?: number } | null;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+};
 
 export default function LiveConsolePage() {
   return (
@@ -24,7 +33,33 @@ function ConsoleFallback() {
 
 function LiveConsole() {
   const params = useSearchParams();
+  const router = useRouter();
   const sessionId = params.get("sessionId");
+  const [detail, setDetail] = useState<SessionDetail | null>(null);
+
+  // If the URL has no sessionId, recover from localStorage (set when the
+  // user last started a run from /dashboard).
+  useEffect(() => {
+    if (sessionId || typeof window === "undefined") return;
+    const last = localStorage.getItem("lastSessionId");
+    if (last) router.replace(`/dashboard/console?sessionId=${last}`);
+  }, [sessionId, router]);
+
+  // Persist whatever sessionId we ARE viewing so the sidebar link can find
+  // its way back here on the next click.
+  useEffect(() => {
+    if (sessionId && typeof window !== "undefined") {
+      localStorage.setItem("lastSessionId", sessionId);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    apiFetch<SessionDetail>(`/sessions/${sessionId}`)
+      .then(setDetail)
+      .catch(() => setDetail(null));
+  }, [sessionId]);
+
   useSessionWS(sessionId);
   const slice = useSessionStore((s) =>
     sessionId ? s.sessions[sessionId] : undefined,
@@ -57,11 +92,36 @@ function LiveConsole() {
   }
 
   async function stop() {
-    await apiFetch(`/sessions/${sessionId}/stop`, { method: "POST" });
+    try {
+      await apiFetch(`/sessions/${sessionId}/stop`, { method: "POST" });
+    } catch (e) {
+      console.error("stop failed:", e);
+    }
   }
 
-  const status = slice?.status ?? "—";
-  const percent = slice?.percent ?? 0;
+  // Prefer the WS-driven slice; fall back to the DB-fetched detail so the page
+  // shows something even when no live events are arriving (terminal sessions).
+  const status = (slice?.status ?? detail?.status ?? "—").toString();
+  const percent =
+    slice?.percent ??
+    (detail?.progress
+      ? Math.round(
+          ((detail.progress.applied ?? 0) /
+            Math.max(
+              1,
+              (detail.progress.applied ?? 0) +
+                (detail.progress.skipped ?? 0) +
+                (detail.progress.failed ?? 0),
+            )) *
+            100,
+        )
+      : 0);
+  const applied = slice?.applied ?? detail?.progress?.applied ?? 0;
+  const skipped = slice?.skipped ?? detail?.progress?.skipped ?? 0;
+  const failed = slice?.failed ?? detail?.progress?.failed ?? 0;
+  const terminal = ["completed", "failed", "cancelled"].includes(
+    status.toLowerCase(),
+  );
 
   return (
     <div className="space-y-6">
@@ -75,11 +135,26 @@ function LiveConsole() {
         </div>
         <div className="flex items-center gap-3">
           <StatusBadge status={status} />
-          <button onClick={stop} className="btn-danger">
-            <StopIcon /> Stop run
-          </button>
+          {!terminal && (
+            <button onClick={stop} className="btn-danger">
+              <StopIcon /> Stop run
+            </button>
+          )}
         </div>
       </div>
+
+      {terminal && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-slate-300 flex items-center gap-3">
+          <svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" strokeLinecap="round" />
+          </svg>
+          <span>
+            Session has ended ({status}). Showing replay from the event log —
+            no new updates will arrive.
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <section className="xl:col-span-2 space-y-6">
@@ -102,13 +177,9 @@ function LiveConsole() {
               />
             </div>
             <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Stat
-                label="Applied"
-                value={slice?.applied ?? 0}
-                tone="emerald"
-              />
-              <Stat label="Skipped" value={slice?.skipped ?? 0} tone="amber" />
-              <Stat label="Failed" value={slice?.failed ?? 0} tone="rose" />
+              <Stat label="Applied" value={applied} tone="emerald" />
+              <Stat label="Skipped" value={skipped} tone="amber" />
+              <Stat label="Failed" value={failed} tone="rose" />
               <Stat
                 label="Status"
                 value={status}

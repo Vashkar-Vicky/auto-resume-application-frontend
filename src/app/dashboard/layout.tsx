@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+import { getAccessToken, refreshAccessToken } from "@/lib/api";
 
 const nav: { href: string; label: string; icon: ReactNode }[] = [
   {
@@ -79,6 +80,30 @@ const nav: { href: string; label: string; icon: ReactNode }[] = [
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (getAccessToken()) {
+      setReady(true);
+      return;
+    }
+    refreshAccessToken().then((t) => {
+      if (t) {
+        setReady(true);
+      } else {
+        router.replace("/login");
+      }
+    });
+  }, [router]);
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <div className="text-sm text-slate-400">Loading…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">

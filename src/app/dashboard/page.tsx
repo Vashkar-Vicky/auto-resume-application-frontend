@@ -9,6 +9,7 @@ export default function DashboardOverview() {
   const [keywords, setKeywords] = useState("software engineer, golang, backend");
   const [locations, setLocations] = useState("Remote, Bangalore");
   const [dailyLimit, setDailyLimit] = useState(50);
+  const [minScore, setMinScore] = useState(60);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -28,8 +29,12 @@ export default function DashboardOverview() {
             .map((s) => s.trim())
             .filter(Boolean),
           dailyLimit,
+          minScore,
         }),
       });
+      if (typeof window !== "undefined") {
+        localStorage.setItem("lastSessionId", sessionId);
+      }
       router.push(`/dashboard/console?sessionId=${sessionId}`);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "failed");
@@ -105,6 +110,27 @@ export default function DashboardOverview() {
               max={200}
               value={dailyLimit}
               onChange={(e) => setDailyLimit(Number(e.target.value))}
+              className="input w-24 text-center"
+            />
+          </div>
+        </Field>
+
+        <Field label="Min match score" hint="0–100% — skip jobs below this">
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={minScore}
+              onChange={(e) => setMinScore(Number(e.target.value))}
+              className="flex-1 accent-indigo-500"
+            />
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={minScore}
+              onChange={(e) => setMinScore(Number(e.target.value))}
               className="input w-24 text-center"
             />
           </div>

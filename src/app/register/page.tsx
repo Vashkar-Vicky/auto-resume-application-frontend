@@ -5,6 +5,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, setAccessToken } from "@/lib/api";
 
+type Phase = "idle" | "verifying" | "registering";
+
+// The verify-linkedin token is bound to the exact LinkedIn email/password the
+// user verified with; track both so we can invalidate the token when either
+// field is edited.
+type Verified = {
+  linkedinEmail: string;
+  linkedinPassword: string;
+  token: string;
+};
+
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -14,31 +25,82 @@ export default function RegisterPage() {
     linkedinEmail: "",
     linkedinPassword: "",
   });
+  const [verified, setVerified] = useState<Verified | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+
+  const busy = phase !== "idle";
+  const isVerified =
+    verified !== null &&
+    verified.linkedinEmail === form.linkedinEmail &&
+    verified.linkedinPassword === form.linkedinPassword;
+
+  const canVerify =
+    !busy && form.linkedinEmail.trim() !== "" && form.linkedinPassword !== "";
+
+  async function verifyLinkedIn() {
+    setErr(null);
+    setPhase("verifying");
+    try {
+      const { verificationToken } = await apiFetch<{
+        verified: boolean;
+        verificationToken: string;
+      }>("/auth/verify-linkedin", {
+        method: "POST",
+        body: JSON.stringify({
+          linkedinEmail: form.linkedinEmail,
+          linkedinPassword: form.linkedinPassword,
+        }),
+      });
+      setVerified({
+        linkedinEmail: form.linkedinEmail,
+        linkedinPassword: form.linkedinPassword,
+        token: verificationToken,
+      });
+    } catch (e: unknown) {
+      setVerified(null);
+      setErr(
+        e instanceof Error
+          ? e.message
+          : "could not verify LinkedIn credentials",
+      );
+    } finally {
+      setPhase("idle");
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    setBusy(true);
+    if (!isVerified || !verified) {
+      setErr("verify your LinkedIn login first");
+      return;
+    }
+    setPhase("registering");
     try {
       const { accessToken } = await apiFetch<{ accessToken: string }>(
         "/auth/register",
-        { method: "POST", body: JSON.stringify(form) },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...form,
+            verificationToken: verified.token,
+          }),
+        },
       );
       setAccessToken(accessToken);
       router.push("/dashboard");
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "register failed");
-    } finally {
-      setBusy(false);
+      setPhase("idle");
     }
   }
 
   const set =
     (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       setForm((f) => ({ ...f, [k]: e.target.value }));
+    };
 
   return (
     <main className="min-h-screen grid place-items-center px-6 py-16">
@@ -108,12 +170,33 @@ export default function RegisterPage() {
                     <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                   </svg>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-200">
-                    LinkedIn credentials
-                  </p>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-slate-200">
+                      LinkedIn credentials
+                    </p>
+                    {isVerified && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-medium px-2 py-0.5">
+                        <svg
+                          className="h-3 w-3"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                        >
+                          <path
+                            d="M5 12l5 5 9-11"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        Verified
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-400">
-                    Encrypted at rest. Used only to drive the auto-apply worker.
+                    We sign in to LinkedIn to make sure these work before we
+                    create your account. Stored encrypted at rest.
                   </p>
                 </div>
               </div>
@@ -139,6 +222,23 @@ export default function RegisterPage() {
                     className="input"
                   />
                 </Field>
+
+                {!isVerified && (
+                  <button
+                    type="button"
+                    onClick={verifyLinkedIn}
+                    disabled={!canVerify}
+                    className="btn-secondary w-full py-2 text-sm"
+                  >
+                    {phase === "verifying" ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Spinner /> Signing into LinkedIn… up to a minute
+                      </span>
+                    ) : (
+                      "Verify LinkedIn login"
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -149,10 +249,15 @@ export default function RegisterPage() {
             )}
 
             <button
-              disabled={busy}
+              disabled={busy || !isVerified}
+              title={
+                !isVerified
+                  ? "Verify your LinkedIn login above first"
+                  : undefined
+              }
               className="btn-primary w-full py-2.5 text-base"
             >
-              {busy ? (
+              {phase === "registering" ? (
                 <span className="inline-flex items-center gap-2">
                   <Spinner /> Creating account…
                 </span>
