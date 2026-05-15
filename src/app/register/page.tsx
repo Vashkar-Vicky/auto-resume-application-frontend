@@ -1,9 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, setAccessToken } from "@/lib/api";
+
+// Public Chrome Web Store URL for the AutoApply LinkedIn Connector. Update
+// when the extension is published.
+const EXTENSION_INSTALL_URL =
+  "https://chrome.google.com/webstore/detail/autoapply-linkedin-connec/PLACEHOLDER";
+
+async function requestCookieFromExtension(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener(
+        "AUTOAPPLY_LINKEDIN_COOKIE_RESPONSE",
+        onResp as EventListener,
+      );
+      reject(
+        new Error(
+          "Extension did not respond — open LinkedIn in this browser and try again",
+        ),
+      );
+    }, 8000);
+    const onResp = (e: Event) => {
+      clearTimeout(timeoutId);
+      window.removeEventListener(
+        "AUTOAPPLY_LINKEDIN_COOKIE_RESPONSE",
+        onResp as EventListener,
+      );
+      const detail = (e as CustomEvent).detail as
+        | { cookie?: string; error?: string }
+        | undefined;
+      if (!detail) return reject(new Error("empty response from extension"));
+      if (detail.error) return reject(new Error(detail.error));
+      if (!detail.cookie) return reject(new Error("no cookie returned"));
+      resolve(detail.cookie);
+    };
+    window.addEventListener(
+      "AUTOAPPLY_LINKEDIN_COOKIE_RESPONSE",
+      onResp as EventListener,
+    );
+    window.dispatchEvent(new CustomEvent("AUTOAPPLY_REQUEST_LINKEDIN_COOKIE"));
+  });
+}
 
 type Phase = "idle" | "verifying" | "registering";
 
@@ -28,7 +68,54 @@ export default function RegisterPage() {
   const [verified, setVerified] = useState<Verified | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [showManual, setShowManual] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [extReady, setExtReady] = useState(false);
+
+  useEffect(() => {
+    const onReady = () => setExtReady(true);
+    window.addEventListener("AUTOAPPLY_EXTENSION_READY", onReady);
+    // The extension's content script dispatches the ready event on document
+    // idle. If we mount after that fires, we won't catch it — but the
+    // extension will fire it on every page (re)load, so a navigation cures it.
+    return () =>
+      window.removeEventListener("AUTOAPPLY_EXTENSION_READY", onReady);
+  }, []);
+
+  async function connectWithExtension() {
+    if (!form.linkedinEmail.trim()) {
+      setErr("enter your LinkedIn email first");
+      return;
+    }
+    setErr(null);
+    setPhase("verifying");
+    try {
+      const cookie = await requestCookieFromExtension();
+      setForm((f) => ({ ...f, linkedinCookie: cookie }));
+      const { verificationToken } = await apiFetch<{
+        verified: boolean;
+        verificationToken: string;
+      }>("/auth/verify-linkedin", {
+        method: "POST",
+        body: JSON.stringify({
+          linkedinEmail: form.linkedinEmail,
+          linkedinCookie: cookie,
+        }),
+      });
+      setVerified({
+        linkedinEmail: form.linkedinEmail,
+        linkedinCookie: cookie,
+        token: verificationToken,
+      });
+    } catch (e: unknown) {
+      setVerified(null);
+      setErr(
+        e instanceof Error ? e.message : "could not connect via extension",
+      );
+    } finally {
+      setPhase("idle");
+    }
+  }
 
   const busy = phase !== "idle";
   const isVerified =
@@ -266,23 +353,97 @@ export default function RegisterPage() {
                     className="input"
                   />
                 </Field>
-                <Field
-                  label="LinkedIn session cookie (li_at)"
-                  hint="Paste only the value"
-                >
-                  <textarea
-                    value={form.linkedinCookie}
-                    onChange={set("linkedinCookie")}
-                    placeholder="AQEDAR... (long opaque token)"
-                    required
-                    rows={3}
-                    spellCheck={false}
-                    autoComplete="off"
-                    className="input font-mono text-xs"
-                  />
-                </Field>
 
                 {!isVerified && (
+                  <>
+                    {extReady ? (
+                      <button
+                        type="button"
+                        onClick={connectWithExtension}
+                        disabled={busy || form.linkedinEmail.trim() === ""}
+                        className="btn-primary w-full py-2 text-sm"
+                      >
+                        {phase === "verifying" ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Spinner /> Connecting via extension…
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center gap-2">
+                            <svg
+                              className="h-4 w-4"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M9 12l2 2 4-4" />
+                              <circle cx="12" cy="12" r="10" />
+                            </svg>
+                            Connect with extension
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs space-y-2">
+                        <p className="text-slate-300">
+                          Install our 1-click browser extension to connect
+                          your LinkedIn securely — no copy-pasting needed.
+                        </p>
+                        <a
+                          href={EXTENSION_INSTALL_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-primary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+                        >
+                          Install Chrome extension
+                        </a>
+                        <p className="text-[11px] text-slate-500">
+                          Already installed?{" "}
+                          <button
+                            type="button"
+                            onClick={() => window.location.reload()}
+                            className="text-brand-300 hover:text-brand-200 underline"
+                          >
+                            Reload this page
+                          </button>
+                          .
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowManual((v) => !v)}
+                        className="text-[11px] text-slate-500 hover:text-slate-300 underline underline-offset-2"
+                      >
+                        {showManual
+                          ? "Hide manual cookie paste"
+                          : "Paste cookie manually instead"}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {(showManual || isVerified) && (
+                  <Field
+                    label="LinkedIn session cookie (li_at)"
+                    hint="Advanced — paste only the value"
+                  >
+                    <textarea
+                      value={form.linkedinCookie}
+                      onChange={set("linkedinCookie")}
+                      placeholder="AQEDAR... (long opaque token)"
+                      required
+                      rows={3}
+                      spellCheck={false}
+                      autoComplete="off"
+                      className="input font-mono text-xs"
+                    />
+                  </Field>
+                )}
+
+                {showManual && !isVerified && (
                   <button
                     type="button"
                     onClick={verifyLinkedIn}
@@ -294,7 +455,7 @@ export default function RegisterPage() {
                         <Spinner /> Verifying with LinkedIn…
                       </span>
                     ) : (
-                      "Verify LinkedIn session"
+                      "Verify pasted cookie"
                     )}
                   </button>
                 )}
