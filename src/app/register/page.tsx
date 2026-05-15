@@ -7,12 +7,12 @@ import { apiFetch, setAccessToken } from "@/lib/api";
 
 type Phase = "idle" | "verifying" | "registering";
 
-// The verify-linkedin token is bound to the exact LinkedIn email/password the
+// The verify-linkedin token is bound to the exact LinkedIn email/cookie the
 // user verified with; track both so we can invalidate the token when either
 // field is edited.
 type Verified = {
   linkedinEmail: string;
-  linkedinPassword: string;
+  linkedinCookie: string;
   token: string;
 };
 
@@ -23,20 +23,21 @@ export default function RegisterPage() {
     email: "",
     password: "",
     linkedinEmail: "",
-    linkedinPassword: "",
+    linkedinCookie: "",
   });
   const [verified, setVerified] = useState<Verified | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [showHelp, setShowHelp] = useState(false);
 
   const busy = phase !== "idle";
   const isVerified =
     verified !== null &&
     verified.linkedinEmail === form.linkedinEmail &&
-    verified.linkedinPassword === form.linkedinPassword;
+    verified.linkedinCookie === form.linkedinCookie;
 
   const canVerify =
-    !busy && form.linkedinEmail.trim() !== "" && form.linkedinPassword !== "";
+    !busy && form.linkedinEmail.trim() !== "" && form.linkedinCookie.trim() !== "";
 
   async function verifyLinkedIn() {
     setErr(null);
@@ -49,12 +50,12 @@ export default function RegisterPage() {
         method: "POST",
         body: JSON.stringify({
           linkedinEmail: form.linkedinEmail,
-          linkedinPassword: form.linkedinPassword,
+          linkedinCookie: form.linkedinCookie.trim(),
         }),
       });
       setVerified({
         linkedinEmail: form.linkedinEmail,
-        linkedinPassword: form.linkedinPassword,
+        linkedinCookie: form.linkedinCookie,
         token: verificationToken,
       });
     } catch (e: unknown) {
@@ -62,7 +63,7 @@ export default function RegisterPage() {
       setErr(
         e instanceof Error
           ? e.message
-          : "could not verify LinkedIn credentials",
+          : "could not verify LinkedIn session cookie",
       );
     } finally {
       setPhase("idle");
@@ -84,6 +85,7 @@ export default function RegisterPage() {
           method: "POST",
           body: JSON.stringify({
             ...form,
+            linkedinCookie: form.linkedinCookie.trim(),
             verificationToken: verified.token,
           }),
         },
@@ -98,7 +100,11 @@ export default function RegisterPage() {
 
   const set =
     (k: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    (
+      e:
+        | React.ChangeEvent<HTMLInputElement>
+        | React.ChangeEvent<HTMLTextAreaElement>,
+    ) => {
       setForm((f) => ({ ...f, [k]: e.target.value }));
     };
 
@@ -173,7 +179,7 @@ export default function RegisterPage() {
                 <div className="flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-medium text-slate-200">
-                      LinkedIn credentials
+                      Connect LinkedIn
                     </p>
                     {isVerified && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-medium px-2 py-0.5">
@@ -195,11 +201,59 @@ export default function RegisterPage() {
                     )}
                   </div>
                   <p className="text-xs text-slate-400">
-                    We sign in to LinkedIn to make sure these work before we
-                    create your account. Stored encrypted at rest.
+                    Paste your LinkedIn session cookie (li_at). We never see
+                    your password, and your cookie is stored encrypted.{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowHelp((v) => !v)}
+                      className="text-brand-300 hover:text-brand-200 underline underline-offset-2"
+                    >
+                      {showHelp ? "hide instructions" : "how do I get this?"}
+                    </button>
                   </p>
                 </div>
               </div>
+
+              {showHelp && (
+                <ol className="mt-3 space-y-1.5 rounded-lg border border-white/5 bg-white/[0.02] p-3 text-xs text-slate-300 list-decimal list-inside">
+                  <li>
+                    Open{" "}
+                    <a
+                      href="https://www.linkedin.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand-300 hover:text-brand-200 underline"
+                    >
+                      linkedin.com
+                    </a>{" "}
+                    in another tab and sign in normally.
+                  </li>
+                  <li>
+                    Press <kbd className="px-1 py-0.5 rounded bg-white/10 text-[10px]">F12</kbd>{" "}
+                    (Windows) or{" "}
+                    <kbd className="px-1 py-0.5 rounded bg-white/10 text-[10px]">⌥⌘I</kbd>{" "}
+                    (Mac) to open DevTools.
+                  </li>
+                  <li>
+                    Go to <span className="text-slate-100">Application</span>{" "}
+                    tab → <span className="text-slate-100">Cookies</span> →{" "}
+                    <span className="text-slate-100">https://www.linkedin.com</span>.
+                  </li>
+                  <li>
+                    Find the row named{" "}
+                    <code className="px-1 py-0.5 rounded bg-white/10">
+                      li_at
+                    </code>{" "}
+                    and copy its <span className="text-slate-100">Value</span>{" "}
+                    (a long string starting with{" "}
+                    <code className="px-1 py-0.5 rounded bg-white/10">
+                      AQE
+                    </code>
+                    ).
+                  </li>
+                  <li>Paste it into the field below.</li>
+                </ol>
+              )}
 
               <div className="mt-4 space-y-3">
                 <Field label="LinkedIn email">
@@ -212,14 +266,19 @@ export default function RegisterPage() {
                     className="input"
                   />
                 </Field>
-                <Field label="LinkedIn password">
-                  <input
-                    type="password"
-                    value={form.linkedinPassword}
-                    onChange={set("linkedinPassword")}
-                    placeholder="••••••••"
+                <Field
+                  label="LinkedIn session cookie (li_at)"
+                  hint="Paste only the value"
+                >
+                  <textarea
+                    value={form.linkedinCookie}
+                    onChange={set("linkedinCookie")}
+                    placeholder="AQEDAR... (long opaque token)"
                     required
-                    className="input"
+                    rows={3}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="input font-mono text-xs"
                   />
                 </Field>
 
@@ -232,10 +291,10 @@ export default function RegisterPage() {
                   >
                     {phase === "verifying" ? (
                       <span className="inline-flex items-center gap-2">
-                        <Spinner /> Signing into LinkedIn… up to a minute
+                        <Spinner /> Verifying with LinkedIn…
                       </span>
                     ) : (
-                      "Verify LinkedIn login"
+                      "Verify LinkedIn session"
                     )}
                   </button>
                 )}
