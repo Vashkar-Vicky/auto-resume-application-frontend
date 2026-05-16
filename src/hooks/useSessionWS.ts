@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, WS_BASE } from "@/lib/api";
 import { useSessionStore } from "@/store/sessionStore";
 import type { SessionEvent } from "@/types/events";
-
-const WS_BASE =
-  process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:18080";
 
 export function useSessionWS(sessionId: string | null) {
   const apply = useSessionStore((s) => s.apply);

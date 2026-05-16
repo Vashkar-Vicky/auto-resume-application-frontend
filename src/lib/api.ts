@@ -1,5 +1,15 @@
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:18080";
 
+// WS_BASE prefers an explicit NEXT_PUBLIC_WS_URL but otherwise derives the
+// websocket origin from NEXT_PUBLIC_API_URL (https → wss, http → ws). This
+// way a single env var configures both surfaces in production.
+export const WS_BASE: string = (() => {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (API.startsWith("https://")) return "wss://" + API.slice("https://".length);
+  if (API.startsWith("http://")) return "ws://" + API.slice("http://".length);
+  return API;
+})();
+
 let accessToken: string | null = null;
 let refreshInFlight: Promise<string | null> | null = null;
 
