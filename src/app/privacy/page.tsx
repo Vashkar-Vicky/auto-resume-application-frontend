@@ -6,8 +6,8 @@ export const metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen px-6 py-16">
-      <div className="mx-auto max-w-2xl prose prose-invert">
+    <main className="min-h-screen px-6 py-16 text-slate-300">
+      <div className="mx-auto max-w-2xl space-y-4 [&_h1]:text-3xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h1]:text-white [&_h1]:mt-2 [&_h1]:mb-6 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-slate-100 [&_h2]:mt-8 [&_h2]:mb-2 [&_p]:leading-relaxed [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-1 [&_ul]:my-3 [&_li]:leading-relaxed [&_a]:text-brand-300 [&_a]:hover:text-brand-200 [&_a]:underline [&_a]:underline-offset-2 [&_code]:bg-white/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_strong]:text-slate-100 [&_em]:text-slate-500">
         <h1>Privacy Policy</h1>
         <p>
           <em>Last updated: May 16, 2026</em>
