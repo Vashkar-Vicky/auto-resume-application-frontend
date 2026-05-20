@@ -5,10 +5,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, setAccessToken } from "@/lib/api";
 
-// Public Chrome Web Store URL for the AutoApply LinkedIn Connector. Update
-// when the extension is published.
 const EXTENSION_INSTALL_URL =
-  "https://chrome.google.com/webstore/detail/autoapply-linkedin-connec/PLACEHOLDER";
+  "https://chromewebstore.google.com/detail/autoapply-linkedin-connec/hlaopmkjjcfmhnokpdcjcojilnddoinp";
 
 async function requestCookieFromExtension(): Promise<string> {
   return new Promise((resolve, reject) => {

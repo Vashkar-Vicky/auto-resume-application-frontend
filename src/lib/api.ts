@@ -28,6 +28,22 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+// logout POSTs /auth/logout (best-effort — server revokes the refresh token
+// chain and clears the `rt` cookie) and then drops the in-memory access
+// token. Returns once the server has responded so the caller can safely
+// redirect to /login without a race against an in-flight refresh.
+export async function logout(): Promise<void> {
+  try {
+    await fetch(`${API}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    // network error is non-fatal — we still want to clear local state
+  }
+  accessToken = null;
+}
+
 // refreshAccessToken POSTs /auth/refresh and stores the new access token.
 // Concurrent callers share the same in-flight promise so we never present the
 // same refresh-cookie twice — the backend treats a re-presented token as

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { getAccessToken, refreshAccessToken } from "@/lib/api";
+import { getAccessToken, logout, refreshAccessToken } from "@/lib/api";
 
 const nav: { href: string; label: string; icon: ReactNode }[] = [
   {
@@ -82,6 +82,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (getAccessToken()) {
@@ -96,6 +97,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       }
     });
   }, [router]);
+
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    await logout();
+    router.replace("/login");
+  }
 
   if (!ready) {
     return (
@@ -153,6 +161,28 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             Keep the live console open to watch screenshots stream in real-time.
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="mt-6 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-rose-200 hover:bg-rose-500/[0.08] border border-transparent hover:border-rose-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="h-4 w-4"
+          >
+            <path
+              d="M15 17l5-5-5-5M20 12H9M12 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {signingOut ? "Signing out…" : "Sign out"}
+        </button>
       </aside>
 
       <main className="flex-1 px-8 py-8 max-w-[1400px] animate-fade-in">
