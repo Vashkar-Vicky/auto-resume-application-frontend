@@ -22,6 +22,19 @@ export class AuthRequiredError extends Error {
 
 export function setAccessToken(t: string | null) {
   accessToken = t;
+  // Hand the token to the AutoApply browser extension so it can poll on the
+  // user's behalf (extension-as-worker architecture). The extension's content
+  // script listens for these events on this origin and forwards them to its
+  // background service worker. No-op if the extension isn't installed.
+  if (typeof window !== "undefined") {
+    if (t) {
+      window.dispatchEvent(
+        new CustomEvent("AUTOAPPLY_SET_TOKEN", { detail: { token: t } }),
+      );
+    } else {
+      window.dispatchEvent(new CustomEvent("AUTOAPPLY_CLEAR_TOKEN"));
+    }
+  }
 }
 
 export function getAccessToken(): string | null {
